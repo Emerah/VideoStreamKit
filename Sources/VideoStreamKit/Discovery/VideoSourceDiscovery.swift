@@ -181,6 +181,7 @@ extension VideoStreamKit.Discovery {
 
 // MARK: - Mapping
 private extension VideoStreamKit.Discovery.SourceDiscovery {
+    
     static func content(options: WindowOptions) async throws -> SCShareableContent {
         if options.currentProcessOnly {
             return try await SCShareableContent.currentProcess

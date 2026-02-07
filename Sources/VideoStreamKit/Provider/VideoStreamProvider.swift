@@ -61,12 +61,7 @@ extension VideoStreamKit.Provider {
             public let dropPolicy: DropPolicy
             public let showsCursor: Bool
 
-            public init(
-                framesPerSecond: Int = 30,
-                bufferDepth: Int = 4,
-                dropPolicy: DropPolicy = .dropOldest,
-                showsCursor: Bool = true
-            ) {
+            public init(framesPerSecond: Int = 30, bufferDepth: Int = 4, dropPolicy: DropPolicy = .dropOldest, showsCursor: Bool = true) {
                 self.framesPerSecond = framesPerSecond
                 self.bufferDepth = bufferDepth
                 self.dropPolicy = dropPolicy
@@ -103,7 +98,6 @@ extension VideoStreamKit.Provider {
 
         private var stream: SCStream?
         private var outputAdapter: StreamOutputAdapter?
-        private var outputQueue: DispatchQueue?
         private var isTerminated = false
 
         /// Asynchronous frame stream for the configured source.
@@ -116,10 +110,7 @@ extension VideoStreamKit.Provider {
             self.source = source
             self.configuration = configuration
             self.streamState = .idle
-            self.frameSink = VideoFrameSink(
-                bufferDepth: max(1, configuration.bufferDepth),
-                dropPolicy: configuration.dropPolicy
-            )
+            self.frameSink = VideoFrameSink(bufferDepth: max(1, configuration.bufferDepth), dropPolicy: configuration.dropPolicy)
         }
 
         /// Starts capture.
@@ -174,7 +165,6 @@ extension VideoStreamKit.Provider {
 
                 self.stream = stream
                 self.outputAdapter = outputAdapter
-                self.outputQueue = outputQueue
 
                 try stream.addStreamOutput(outputAdapter, type: .screen, sampleHandlerQueue: outputQueue)
                 try await stream.startCapture()
@@ -373,7 +363,6 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
 
         self.stream = nil
         self.outputAdapter = nil
-        self.outputQueue = nil
     }
 }
 
@@ -400,34 +389,36 @@ private final class StreamOutputAdapter: NSObject, SCStreamOutput {
             return
         }
 
-        do {
-            guard let status = frameStatus(from: sampleBuffer) else {
-                return
+        autoreleasepool {
+            do {
+                guard let status = frameStatus(from: sampleBuffer) else {
+                    return
+                }
+
+                guard status == .complete || status == .started else {
+                    return
+                }
+
+                guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                    return
+                }
+
+                let bgraBuffer = try bgraPixelBuffer(from: imageBuffer)
+                let contentRect = sampleContentRect(from: sampleBuffer) ?? defaultContentRect
+                let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+                let sequenceNumber = sink.nextSequenceNumber()
+
+                let frame = VideoStreamKit.Provider.VideoStreamProvider.Frame(
+                    pixelBuffer: bgraBuffer,
+                    timestamp: timestamp,
+                    contentRect: contentRect,
+                    sequenceNumber: sequenceNumber
+                )
+
+                sink.push(frame)
+            } catch {
+                failureHandler(error)
             }
-
-            guard status == .complete || status == .started else {
-                return
-            }
-
-            guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-                return
-            }
-
-            let bgraBuffer = try bgraPixelBuffer(from: imageBuffer)
-            let contentRect = sampleContentRect(from: sampleBuffer) ?? defaultContentRect
-            let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-            let sequenceNumber = sink.nextSequenceNumber()
-
-            let frame = VideoStreamKit.Provider.VideoStreamProvider.Frame(
-                pixelBuffer: bgraBuffer,
-                timestamp: timestamp,
-                contentRect: contentRect,
-                sequenceNumber: sequenceNumber
-            )
-
-            sink.push(frame)
-        } catch {
-            failureHandler(error)
         }
     }
 }
@@ -451,12 +442,11 @@ private extension StreamOutputAdapter {
         guard
             let array = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
             let attachments = array.first,
-            let anyRect = attachments[.contentRect]
+            let rectDictionary = attachments[.contentRect] as? NSDictionary
         else {
             return nil
         }
 
-        let rectDictionary = anyRect as! CFDictionary
         return CGRect(dictionaryRepresentation: rectDictionary)
     }
 

@@ -30,6 +30,11 @@ let package = Package(
                 .linkedFramework("CoreGraphics"),
                 
             ]
+        ),
+        .testTarget(
+            name: "VideoStreamKitTests",
+            dependencies: ["VideoStreamKit"],
+            path: "Tests/VideoStreamKitTests"
         )
     ]
 )
