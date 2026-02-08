@@ -60,12 +60,26 @@ extension VideoStreamKit.Provider {
             public let bufferDepth: Int
             public let dropPolicy: DropPolicy
             public let showsCursor: Bool
+            public let outputWidth: Int?
+            public let outputHeight: Int?
+            public let scalesToFit: Bool
 
-            public init(framesPerSecond: Int = 30, bufferDepth: Int = 4, dropPolicy: DropPolicy = .dropOldest, showsCursor: Bool = true) {
+            public init(
+                framesPerSecond: Int = 30,
+                bufferDepth: Int = 4,
+                dropPolicy: DropPolicy = .dropOldest,
+                showsCursor: Bool = true,
+                outputWidth: Int? = nil,
+                outputHeight: Int? = nil,
+                scalesToFit: Bool = true
+            ) {
                 self.framesPerSecond = framesPerSecond
                 self.bufferDepth = bufferDepth
                 self.dropPolicy = dropPolicy
                 self.showsCursor = showsCursor
+                self.outputWidth = outputWidth
+                self.outputHeight = outputHeight
+                self.scalesToFit = scalesToFit
             }
         }
 
@@ -284,19 +298,31 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
     }
 
     func makeStreamConfiguration(for resolvedSource: ResolvedSource) throws -> SCStreamConfiguration {
-        let width = Int(resolvedSource.contentRect.width.rounded(.towardZero))
-        let height = Int(resolvedSource.contentRect.height.rounded(.towardZero))
+        let resolvedWidth = Int(resolvedSource.contentRect.width.rounded(.towardZero))
+        let resolvedHeight = Int(resolvedSource.contentRect.height.rounded(.towardZero))
 
-        guard width > 0, height > 0 else {
+        guard resolvedWidth > 0, resolvedHeight > 0 else {
             throw Error.invalidConfiguration("Resolved source rect must be non-empty.")
         }
 
+        if (configuration.outputWidth == nil) != (configuration.outputHeight == nil) {
+            throw Error.invalidConfiguration("outputWidth and outputHeight must both be set or both be nil.")
+        }
+
+        let outputWidth = configuration.outputWidth ?? resolvedWidth
+        let outputHeight = configuration.outputHeight ?? resolvedHeight
+
+        guard outputWidth > 0, outputHeight > 0 else {
+            throw Error.invalidConfiguration("outputWidth and outputHeight must be greater than zero.")
+        }
+
         let streamConfiguration = SCStreamConfiguration()
-        streamConfiguration.width = max(1, width)
-        streamConfiguration.height = max(1, height)
+        streamConfiguration.width = max(1, outputWidth)
+        streamConfiguration.height = max(1, outputHeight)
         streamConfiguration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(configuration.framesPerSecond))
         streamConfiguration.queueDepth = configuration.bufferDepth
         streamConfiguration.showsCursor = configuration.showsCursor
+        streamConfiguration.scalesToFit = configuration.scalesToFit
         streamConfiguration.pixelFormat = kCVPixelFormatType_32BGRA
 
         if let sourceRect = resolvedSource.sourceRect {

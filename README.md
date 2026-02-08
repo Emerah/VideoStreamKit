@@ -85,7 +85,7 @@ Actor-based streaming provider.
 
 Key types:
 - `Source`: `.display(id:crop:)`, `.window(id:crop:)`
-- `Configuration`: `framesPerSecond`, `bufferDepth`, `dropPolicy`, `showsCursor`
+- `Configuration`: `framesPerSecond`, `bufferDepth`, `dropPolicy`, `showsCursor`, `outputWidth`, `outputHeight`, `scalesToFit`
 - `DropPolicy`: `.dropOldest`, `.dropNewest`
 - `Frame`: `pixelBuffer`, `timestamp`, `contentRect`, `sequenceNumber`
 - `State`: `.idle`, `.starting`, `.running`, `.stopping`, `.failed`
@@ -154,7 +154,15 @@ guard let display = sources.displays.first else {
 
 let provider = VideoStreamKit.Provider.VideoStreamProvider(
     source: display.asSource(),
-    configuration: .init(framesPerSecond: 30, bufferDepth: 4, dropPolicy: .dropOldest, showsCursor: true)
+    configuration: .init(
+        framesPerSecond: 30,
+        bufferDepth: 4,
+        dropPolicy: .dropOldest,
+        showsCursor: true,
+        outputWidth: 480,
+        outputHeight: 272,
+        scalesToFit: true
+    )
 )
 
 try await provider.start()
@@ -194,7 +202,23 @@ Task {
 await provider.stop()
 ```
 
-### 4) Authorization flow
+### 4) Capture full source and scale output
+
+```swift
+import VideoStreamKit
+
+let sources = try await VideoStreamKit.Discovery.SourceDiscovery.availableSources()
+guard let display = sources.displays.first else { return }
+
+let provider = VideoStreamKit.Provider.VideoStreamProvider(
+    source: display.asSource(), // full source
+    configuration: .init(outputWidth: 480, outputHeight: 272, scalesToFit: true)
+)
+
+try await provider.start()
+```
+
+### 5) Authorization flow
 
 ```swift
 import VideoStreamKit
