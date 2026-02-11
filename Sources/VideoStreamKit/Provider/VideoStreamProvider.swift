@@ -197,6 +197,10 @@ extension VideoStreamKit.Provider {
         }
 
         /// Checks capture authorization status without prompting.
+        ///
+        /// Note:
+        /// `CGPreflightScreenCaptureAccess` does not expose a distinct "denied" state.
+        /// A non-authorized result is reported as `.notDetermined`.
         public static func preflightAuthorization() async -> AuthorizationStatus {
             if CGPreflightScreenCaptureAccess() {
                 return .authorized
@@ -219,6 +223,10 @@ extension VideoStreamKit.Provider {
         }
 
         /// Returns the best-available authorization status without prompting.
+        ///
+        /// Note:
+        /// `.denied` is only returned by `requestAuthorization()` because status preflight
+        /// cannot distinguish between "not yet requested" and "previously denied".
         public static func authorizationStatus() async -> AuthorizationStatus {
             await preflightAuthorization()
         }
@@ -267,18 +275,18 @@ extension VideoStreamKit.Provider.VideoStreamProvider.StreamProviderError {
 }
 
 // MARK: - Provider Helpers
-private extension VideoStreamKit.Provider.VideoStreamProvider {
-    struct ResolvedSource {
+extension VideoStreamKit.Provider.VideoStreamProvider {
+    private struct ResolvedSource {
         let filter: SCContentFilter
         let contentRect: CGRect
         let sourceRect: CGRect?
     }
 
-    func handleCaptureFailure(message: String) async {
+    private func handleCaptureFailure(message: String) async {
         await transitionToFailure(.captureFailed(message))
     }
 
-    func mapCaptureError(_ error: Swift.Error) -> StreamProviderError {
+    private func mapCaptureError(_ error: Swift.Error) -> StreamProviderError {
         if let providerError = error as? StreamProviderError {
             return providerError
         }
@@ -290,7 +298,7 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
         return .captureFailed(error.localizedDescription)
     }
 
-    func makeStreamConfiguration(for resolvedSource: ResolvedSource) throws -> SCStreamConfiguration {
+    private func makeStreamConfiguration(for resolvedSource: ResolvedSource) throws -> SCStreamConfiguration {
         let resolvedWidth = Int(resolvedSource.contentRect.width.rounded(.towardZero))
         let resolvedHeight = Int(resolvedSource.contentRect.height.rounded(.towardZero))
 
@@ -325,7 +333,7 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
         return streamConfiguration
     }
 
-    func resolveSource() async throws -> ResolvedSource {
+    private func resolveSource() async throws -> ResolvedSource {
         let shareableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
 
         switch source {
@@ -351,7 +359,7 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
         }
     }
 
-    func resolvedContentRect(fullRect: CGRect, crop: CGRect?) throws -> CGRect {
+    private func resolvedContentRect(fullRect: CGRect, crop: CGRect?) throws -> CGRect {
         guard let crop else {
             return fullRect
         }
@@ -364,14 +372,14 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
         return intersection
     }
 
-    func transitionToFailure(_ error: StreamProviderError) async {
+    private func transitionToFailure(_ error: StreamProviderError) async {
         streamState = .failed
         await releaseCaptureResources()
         frameSink.finish(throwing: error)
         isTerminated = true
     }
 
-    func releaseCaptureResources() async {
+    private func releaseCaptureResources() async {
         if let stream, let outputAdapter {
             try? stream.removeStreamOutput(outputAdapter, type: .screen)
         }
@@ -529,8 +537,12 @@ private final class VideoFrameSink: @unchecked Sendable {
         self.bufferDepth = max(1, bufferDepth)
         self.dropPolicy = dropPolicy
 
+        let bufferingPolicy = Self.continuationBufferingPolicy(
+            bufferDepth: self.bufferDepth,
+            dropPolicy: self.dropPolicy
+        )
         var continuation: AsyncThrowingStream<Frame, Swift.Error>.Continuation?
-        self.stream = AsyncThrowingStream { streamContinuation in
+        self.stream = AsyncThrowingStream(bufferingPolicy: bufferingPolicy) { streamContinuation in
             continuation = streamContinuation
         }
 
@@ -601,6 +613,18 @@ private final class VideoFrameSink: @unchecked Sendable {
             continuation.finish(throwing: error)
         } else {
             continuation.finish()
+        }
+    }
+
+    static func continuationBufferingPolicy(
+        bufferDepth: Int,
+        dropPolicy: VideoStreamKit.Provider.VideoStreamProvider.DropPolicy
+    ) -> AsyncThrowingStream<Frame, Swift.Error>.Continuation.BufferingPolicy {
+        switch dropPolicy {
+        case .dropOldest:
+            return .bufferingNewest(bufferDepth)
+        case .dropNewest:
+            return .bufferingOldest(bufferDepth)
         }
     }
 
