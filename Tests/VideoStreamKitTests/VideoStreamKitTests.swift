@@ -3,7 +3,7 @@
 // Path: Tests/VideoStreamKitTests/VideoStreamKitTests.swift
 // Date: 2026-02-06
 // Author: Ahmed Emerah
-// Email: ahmed.emerah@icloud.com
+// Email:  ahmed.emerah@icloud.com
 // Github: https://github.com/Emerah
 //
 import XCTest
@@ -12,7 +12,7 @@ import CoreGraphics
 
 final class VideoStreamKitTests: XCTestCase {
     func testWindowOptionsDefaults() {
-        let options = VideoStreamKit.Discovery.SourceDiscovery.WindowOptions()
+        let options = VideoStreamKit.Discovery.VideoSourceDiscovery.WindowOptions()
 
         XCTAssertTrue(options.excludeDesktopWindows)
         XCTAssertTrue(options.onScreenOnly)
@@ -20,19 +20,19 @@ final class VideoStreamKitTests: XCTestCase {
     }
 
     func testAvailableSourcesWindowFilters() {
-        let app1 = VideoStreamKit.Discovery.SourceDiscovery.Application(
+        let app1 = VideoStreamKit.Discovery.VideoSourceDiscovery.Application(
             bundleIdentifier: "com.example.app1",
             applicationName: "App One",
             processID: 123
         )
 
-        let app2 = VideoStreamKit.Discovery.SourceDiscovery.Application(
+        let app2 = VideoStreamKit.Discovery.VideoSourceDiscovery.Application(
             bundleIdentifier: "com.example.app2",
             applicationName: "App Two",
             processID: 456
         )
 
-        let window1 = VideoStreamKit.Discovery.SourceDiscovery.Window(
+        let window1 = VideoStreamKit.Discovery.VideoSourceDiscovery.Window(
             id: 1,
             frame: CGRect(x: 0, y: 0, width: 100, height: 100),
             title: "Main Window",
@@ -42,7 +42,7 @@ final class VideoStreamKitTests: XCTestCase {
             owningApplication: app1
         )
 
-        let window2 = VideoStreamKit.Discovery.SourceDiscovery.Window(
+        let window2 = VideoStreamKit.Discovery.VideoSourceDiscovery.Window(
             id: 2,
             frame: CGRect(x: 10, y: 10, width: 120, height: 120),
             title: "Settings",
@@ -52,7 +52,7 @@ final class VideoStreamKitTests: XCTestCase {
             owningApplication: app2
         )
 
-        let sources = VideoStreamKit.Discovery.SourceDiscovery.AvailableSources(
+        let sources = VideoStreamKit.Discovery.VideoSourceDiscovery.AvailableSources(
             displays: [],
             windows: [window1, window2],
             applications: [app1, app2]
@@ -68,12 +68,12 @@ final class VideoStreamKitTests: XCTestCase {
     }
 
     func testProviderErrorProperties() {
-        let auth = VideoStreamKit.Provider.VideoStreamProvider.Error.notAuthorized
+        let auth = VideoStreamKit.Provider.VideoStreamProvider.StreamProviderError.notAuthorized
         XCTAssertTrue(auth.isAuthorizationError)
         XCTAssertNotNil(auth.recoverySuggestion)
         XCTAssertFalse(auth.userMessage.isEmpty)
 
-        let capture = VideoStreamKit.Provider.VideoStreamProvider.Error.captureFailed("sample")
+        let capture = VideoStreamKit.Provider.VideoStreamProvider.StreamProviderError.captureFailed("sample")
         XCTAssertFalse(capture.isAuthorizationError)
         XCTAssertNotNil(capture.recoverySuggestion)
         XCTAssertTrue(capture.userMessage.contains("sample"))

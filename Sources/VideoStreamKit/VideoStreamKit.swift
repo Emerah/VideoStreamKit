@@ -8,6 +8,9 @@
 //
 import Foundation
 
+public typealias VideoStreamProvider = VideoStreamKit.Provider.VideoStreamProvider
+public typealias VideoSourceDiscovery = VideoStreamKit.Discovery.VideoSourceDiscovery
+
 /// Namespace for the VideoStreamKit public API.
 public enum VideoStreamKit {
     /// Namespace for source discovery APIs.

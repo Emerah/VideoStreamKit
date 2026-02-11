@@ -6,8 +6,8 @@
 // Email: ahmed.emerah@icloud.com
 // Github: https://github.com/Emerah
 //
-import Foundation
-import CoreGraphics
+
+
 import CoreMedia
 import CoreVideo
 import CoreImage
@@ -46,7 +46,7 @@ extension VideoStreamKit.Provider {
         }
 
         /// Errors produced by the stream provider.
-        public enum Error: Swift.Error, Sendable {
+        public enum StreamProviderError: Error, Sendable {
             case notAuthorized
             case sourceNotFound
             case invalidConfiguration(String)
@@ -81,6 +81,8 @@ extension VideoStreamKit.Provider {
                 self.outputHeight = outputHeight
                 self.scalesToFit = scalesToFit
             }
+            
+            public static let `default`: Self = .init()
         }
 
         /// Frame payload produced by the provider.
@@ -90,12 +92,7 @@ extension VideoStreamKit.Provider {
             public let contentRect: CGRect
             public let sequenceNumber: UInt64
 
-            public init(
-                pixelBuffer: CVPixelBuffer,
-                timestamp: CMTime,
-                contentRect: CGRect,
-                sequenceNumber: UInt64
-            ) {
+            public init(pixelBuffer: CVPixelBuffer, timestamp: CMTime, contentRect: CGRect, sequenceNumber: UInt64) {
                 self.pixelBuffer = pixelBuffer
                 self.timestamp = timestamp
                 self.contentRect = contentRect
@@ -105,22 +102,20 @@ extension VideoStreamKit.Provider {
 
         /// Current stream lifecycle state.
         public private(set) var streamState: State
-
         private let source: Source
         private let configuration: Configuration
         private let frameSink: VideoFrameSink
-
         private var stream: SCStream?
         private var outputAdapter: StreamOutputAdapter?
         private var isTerminated = false
 
         /// Asynchronous frame stream for the configured source.
-        public nonisolated var frames: AsyncThrowingStream<Frame, Swift.Error> {
+        public nonisolated var frames: AsyncThrowingStream<Frame, Error> {
             frameSink.stream
         }
 
         /// Creates a provider for a single source and configuration.
-        public init(source: Source, configuration: Configuration = .init()) {
+        public init(source: Source, configuration: Configuration = .default) {
             self.source = source
             self.configuration = configuration
             self.streamState = .idle
@@ -130,28 +125,28 @@ extension VideoStreamKit.Provider {
         /// Starts capture.
         public func start() async throws {
             guard streamState == .idle else {
-                throw Error.invalidConfiguration("start() is only valid from idle state.")
+                throw StreamProviderError.invalidConfiguration("start() is only valid from idle state.")
             }
 
             guard !isTerminated else {
-                throw Error.invalidConfiguration("This provider cannot be restarted after stop/failure.")
+                throw StreamProviderError.invalidConfiguration("This provider cannot be restarted after stop/failure.")
             }
 
             guard configuration.framesPerSecond > 0 else {
-                throw Error.invalidConfiguration("framesPerSecond must be greater than zero.")
+                throw StreamProviderError.invalidConfiguration("framesPerSecond must be greater than zero.")
             }
 
             guard configuration.bufferDepth > 0 else {
-                throw Error.invalidConfiguration("bufferDepth must be greater than zero.")
+                throw StreamProviderError.invalidConfiguration("bufferDepth must be greater than zero.")
             }
 
             guard configuration.bufferDepth <= 8 else {
-                throw Error.invalidConfiguration("bufferDepth must not exceed 8.")
+                throw StreamProviderError.invalidConfiguration("bufferDepth must not exceed 8.")
             }
 
             guard await Self.preflightAuthorization() == .authorized else {
                 await transitionToFailure(.notAuthorized)
-                throw Error.notAuthorized
+                throw StreamProviderError.notAuthorized
             }
 
             streamState = .starting
@@ -164,10 +159,8 @@ extension VideoStreamKit.Provider {
                 let outputAdapter = StreamOutputAdapter(
                     defaultContentRect: resolvedSource.contentRect,
                     sink: frameSink,
-                    failureHandler: { [weak self] (error: Swift.Error) in
-                        guard let self else {
-                            return
-                        }
+                    failureHandler: { [weak self] (error: Error) in
+                        guard let self else { return }
 
                         Task {
                             await self.handleCaptureFailure(message: error.localizedDescription)
@@ -233,7 +226,7 @@ extension VideoStreamKit.Provider {
 }
 
 // MARK: - Error Details
-extension VideoStreamKit.Provider.VideoStreamProvider.Error {
+extension VideoStreamKit.Provider.VideoStreamProvider.StreamProviderError {
     public var userMessage: String {
         switch self {
         case .notAuthorized:
@@ -285,8 +278,8 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
         await transitionToFailure(.captureFailed(message))
     }
 
-    func mapCaptureError(_ error: Swift.Error) -> Error {
-        if let providerError = error as? Error {
+    func mapCaptureError(_ error: Swift.Error) -> StreamProviderError {
+        if let providerError = error as? StreamProviderError {
             return providerError
         }
 
@@ -302,18 +295,18 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
         let resolvedHeight = Int(resolvedSource.contentRect.height.rounded(.towardZero))
 
         guard resolvedWidth > 0, resolvedHeight > 0 else {
-            throw Error.invalidConfiguration("Resolved source rect must be non-empty.")
+            throw StreamProviderError.invalidConfiguration("Resolved source rect must be non-empty.")
         }
 
         if (configuration.outputWidth == nil) != (configuration.outputHeight == nil) {
-            throw Error.invalidConfiguration("outputWidth and outputHeight must both be set or both be nil.")
+            throw StreamProviderError.invalidConfiguration("outputWidth and outputHeight must both be set or both be nil.")
         }
 
         let outputWidth = configuration.outputWidth ?? resolvedWidth
         let outputHeight = configuration.outputHeight ?? resolvedHeight
 
         guard outputWidth > 0, outputHeight > 0 else {
-            throw Error.invalidConfiguration("outputWidth and outputHeight must be greater than zero.")
+            throw StreamProviderError.invalidConfiguration("outputWidth and outputHeight must be greater than zero.")
         }
 
         let streamConfiguration = SCStreamConfiguration()
@@ -338,7 +331,7 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
         switch source {
         case .display(let id, let crop):
             guard let display = shareableContent.displays.first(where: { $0.displayID == id }) else {
-                throw Error.sourceNotFound
+                throw StreamProviderError.sourceNotFound
             }
 
             let fullRect = display.frame
@@ -348,7 +341,7 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
 
         case .window(let id, let crop):
             guard let window = shareableContent.windows.first(where: { $0.windowID == id }) else {
-                throw Error.sourceNotFound
+                throw StreamProviderError.sourceNotFound
             }
 
             let fullRect = window.frame
@@ -365,13 +358,13 @@ private extension VideoStreamKit.Provider.VideoStreamProvider {
 
         let intersection = fullRect.intersection(crop)
         guard !intersection.isNull, !intersection.isEmpty else {
-            throw Error.invalidConfiguration("Crop rect does not intersect with source bounds.")
+            throw StreamProviderError.invalidConfiguration("Crop rect does not intersect with source bounds.")
         }
 
         return intersection
     }
 
-    func transitionToFailure(_ error: Error) async {
+    func transitionToFailure(_ error: StreamProviderError) async {
         streamState = .failed
         await releaseCaptureResources()
         frameSink.finish(throwing: error)
@@ -505,7 +498,7 @@ private extension StreamOutputAdapter {
         )
 
         guard status == kCVReturnSuccess, let convertedBuffer else {
-            throw VideoStreamKit.Provider.VideoStreamProvider.Error.captureFailed("Failed to allocate BGRA pixel buffer.")
+            throw VideoStreamKit.Provider.VideoStreamProvider.StreamProviderError.captureFailed("Failed to allocate BGRA pixel buffer.")
         }
 
         ciContext.render(CIImage(cvPixelBuffer: pixelBuffer), to: convertedBuffer)

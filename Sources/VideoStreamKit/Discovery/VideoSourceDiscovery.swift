@@ -13,7 +13,7 @@ import ScreenCaptureKit
 // MARK: - Discovery API
 extension VideoStreamKit.Discovery {
     /// Utilities for discovering shareable displays, windows, and applications.
-    public enum SourceDiscovery {
+    public enum VideoSourceDiscovery {
         /// Options used when querying shareable windows and applications.
         public struct WindowOptions: Sendable {
             public let excludeDesktopWindows: Bool
@@ -180,7 +180,7 @@ extension VideoStreamKit.Discovery {
 }
 
 // MARK: - Mapping
-private extension VideoStreamKit.Discovery.SourceDiscovery {
+private extension VideoStreamKit.Discovery.VideoSourceDiscovery {
     
     static func content(options: WindowOptions) async throws -> SCShareableContent {
         if options.currentProcessOnly {
