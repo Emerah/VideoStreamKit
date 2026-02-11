@@ -21,7 +21,7 @@ The public API is organized under:
 Add the package to your `Package.swift` dependencies:
 
 ```swift
-.package(url: "https://github.com/Emerah/VideoStreamKit.git", from: "1.0.0")
+.package(url: "https://github.com/Emerah/VideoStreamKit.git", branch: "main")
 ```
 
 Then add `VideoStreamKit` to your target dependencies.
